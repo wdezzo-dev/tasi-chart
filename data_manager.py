@@ -233,7 +233,7 @@ def calculate_and_save_indicators(interval):
             continue
         t1, t2, t3, t4, t5 = results
         for t in [t1, t2, t3, t4, t5]:
-            t['الاسم'] = COMPANY_NAMES.get(ticker, ticker)
+            t['الاسم'] = COMPANY_NAMES.get(ticker.replace('.SR', ''), ticker)
         all_data[1].append(t1); all_data[2].append(t2); all_data[3].append(t3)
         all_data[4].append(t4); all_data[5].append(t5)
     
