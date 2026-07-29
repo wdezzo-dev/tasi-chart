@@ -1,0 +1,44 @@
+name: تحديث بيانات السوق
+
+on:
+  schedule:
+    # Sun-Thu at 07:15, 08:15, ... 13:15 UTC = 10:15-16:15 Riyadh
+    - cron: '15 7-13 * * 0-4'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Parse and convert existing DB to Parquet (first run only)
+        run: |
+          if [ -f tasi_technical_analysis.db ]; then
+            python convert_db_to_parquet.py
+          fi
+
+      - name: Update market data
+        run: python update_cli.py
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name "market-bot"
+          git config user.email "bot@github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "No changes to data files. Skipping commit."
+          else
+            git commit -m "auto: تحديث بيانات $(date +'%Y-%m-%d %H:%M') بتوقيت الرياض"
+            git push
+          fi
