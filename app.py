@@ -185,7 +185,11 @@ def render_tab(df, style_func, tab_key):
         df_sorted = df.sort_values(by=['السلبي', 'الإيجابي', 'الرمز'], ascending=[False, True, True]).reset_index(drop=True)
     else:
         df_sorted = df.copy()
-    st.markdown(df_sorted.style.apply(style_func, axis=1).to_html(index=False), unsafe_allow_html=True)
+    html = df_sorted.style.apply(style_func, axis=1).to_html(index=False)
+    st.markdown(
+        f'<div style="overflow-x: auto; overflow-y: auto; max-height: 600px; width: 100%; border: 1px solid #333; border-radius: 4px;">{html}</div>',
+        unsafe_allow_html=True
+    )
 
 # ================== أفضل التطابقات ==================
 
