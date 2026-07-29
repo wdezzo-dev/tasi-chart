@@ -7,5 +7,8 @@ import pandas as pd
 def load_table(interval: str, table_idx: int) -> pd.DataFrame:
     path = f"data/{interval}/table_{table_idx}.parquet"
     if os.path.exists(path):
-        return pd.read_parquet(path)
+        df = pd.read_parquet(path)
+        if 'الرمز' in df.columns:
+            df['الرمز'] = df['الرمز'].str.replace('.SR', '', regex=False)
+        return df
     return pd.DataFrame()
