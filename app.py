@@ -21,6 +21,11 @@ st.markdown("""
     table { width: 100%; margin-bottom: 20px;}
     .stButton>button { border-radius: 8px; font-weight: bold; }
     div[data-testid="stHorizontalBlock"] > div:first-child { gap: 0.5rem; }
+    .table-wrap::-webkit-scrollbar { height: 8px; }
+    .table-wrap::-webkit-scrollbar-track { background: #1e1e1e; border-radius: 4px; }
+    .table-wrap::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+    .table-wrap::-webkit-scrollbar-thumb:hover { background: #777; }
+    .table-hint { text-align: left; font-size: 12px; color: #666; padding: 2px 4px 4px; direction: ltr; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -188,7 +193,8 @@ def render_tab(df, style_func, tab_key):
         df_sorted = df.copy()
     html = df_sorted.style.apply(style_func, axis=1).to_html(index=False)
     st.markdown(
-        f'<div style="overflow-x: auto; overflow-y: auto; max-height: 600px; width: 100%; border: 1px solid #333; border-radius: 4px;">{html}</div>',
+        f'<div class="table-hint">← اسحب للمزيد</div>'
+        f'<div class="table-wrap" style="overflow-x: auto; overflow-y: auto; max-height: 600px; width: 100%; border: 1px solid #333; border-radius: 4px;">{html}</div>',
         unsafe_allow_html=True
     )
 
