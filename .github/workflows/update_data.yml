@@ -6,6 +6,10 @@ on:
     - cron: '15 7-13 * * 0-4'
   workflow_dispatch:
 
+# Grant write permissions to the repository
+permissions:
+  contents: write
+  
 jobs:
   update:
     runs-on: ubuntu-latest
