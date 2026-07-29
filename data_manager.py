@@ -10,6 +10,21 @@ from io import StringIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
+CANDLE_TRACKER_PATH = "data/last_candle.json"
+
+def _read_candle_tracker():
+    if os.path.exists(CANDLE_TRACKER_PATH):
+        with open(CANDLE_TRACKER_PATH) as f:
+            return json.load(f)
+    return {}
+
+def _write_candle_tracker(tracker):
+    os.makedirs("data", exist_ok=True)
+    tmp = CANDLE_TRACKER_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(tracker, f)
+    os.replace(tmp, CANDLE_TRACKER_PATH)
+
 def get_conn():
     conn = sqlite3.connect(DB_NAME)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -199,12 +214,17 @@ def calculate_and_save_indicators(interval):
     ind_table = f'indicators_{interval}'
     
     all_data = {1: [], 2: [], 3: [], 4: [], 5: []}
-    
+    max_dt = None
+
     for ticker in SAUDI_TICKERS:
         df = pd.read_sql_query(
             f"SELECT * FROM {ohlcv_table} WHERE ticker = '{ticker}' ORDER BY datetime ASC", conn)
         if df.empty:
             continue
+        ticker_max = df['datetime'].max()
+        if pd.notna(ticker_max):
+            if max_dt is None or str(ticker_max) > str(max_dt):
+                max_dt = ticker_max
         try:
             results = calculate_all_tables(df, ticker)
         except Exception:
@@ -234,6 +254,11 @@ def calculate_and_save_indicators(interval):
         parquet_dir = f"data/{interval}"
         os.makedirs(parquet_dir, exist_ok=True)
         df.to_parquet(f"{parquet_dir}/table_{table_id}.parquet", compression="snappy", index=False)
+    # ACID: only write tracker after all 5 Parquet files are written
+    if max_dt is not None:
+        tracker = _read_candle_tracker()
+        tracker[interval] = str(max_dt)
+        _write_candle_tracker(tracker)
     conn.commit()
     conn.close()
 
@@ -263,8 +288,11 @@ def full_refresh():
 # ========== Smart Incremental Updates ==========
 
 def _get_latest_ohlcv_datetime(conn, interval):
-    result = conn.execute(f"SELECT MAX(datetime) FROM ohlcv_{interval}").fetchone()
-    return result[0] if result and result[0] else None
+    try:
+        result = conn.execute(f"SELECT MAX(datetime) FROM ohlcv_{interval}").fetchone()
+        return result[0] if result and result[0] else None
+    except sqlite3.OperationalError:
+        return None
 
 
 def _count_new_1h_since(conn, since_dt_str):
@@ -291,14 +319,9 @@ def _should_resample_4h(conn):
 
 
 def get_last_candle_times():
-    """Return dict with latest candle datetime for each interval."""
-    conn = get_conn()
-    result = {}
-    for interval in INTERVALS:
-        dt = _get_latest_ohlcv_datetime(conn, interval)
-        result[interval] = dt
-    conn.close()
-    return result
+    """Return dict with latest candle datetime for each interval from tracker."""
+    tracker = _read_candle_tracker()
+    return {interval: tracker.get(interval) for interval in INTERVALS}
 
 
 def smart_update_all():

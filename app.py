@@ -10,6 +10,7 @@ from matcher import (match_within_interval, match_across_intervals, match_univer
                      TAB_KEYS, TAB_NAMES)
 
 st.set_page_config(page_title="المحلل الرقمي - تاسي", layout="wide")
+init_db()
 
 st.markdown("""
     <style>

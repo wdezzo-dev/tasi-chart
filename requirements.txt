@@ -3,3 +3,4 @@ pandas
 pyarrow
 pandas-ta
 yfinance
+pytz
