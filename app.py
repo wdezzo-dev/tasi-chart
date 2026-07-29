@@ -16,6 +16,7 @@ st.markdown("""
     <style>
     body, .stApp { direction: rtl; text-align: right; }
     th { text-align: center !important; font-size: 14px; background-color: #2e3035 !important; color: white !important;}
+    thead th { position: sticky; top: 0; z-index: 2; }
     td { text-align: center !important; font-size: 13px; font-weight: bold;}
     table { width: 100%; margin-bottom: 20px;}
     .stButton>button { border-radius: 8px; font-weight: bold; }
@@ -68,7 +69,7 @@ labels = {'1h': 'آخر شمعة ساعة', '4h': 'آخر شمعة ٤ ساعات
 now_rt = now_riyadh()
 for i, interval in enumerate(INTERVALS):
     raw = candle_times.get(interval)
-    display = '—'
+    display = '- لا توجد'
     if raw:
         try:
             if interval == '1d':
@@ -85,7 +86,7 @@ for i, interval in enumerate(INTERVALS):
                 if candle_dt <= now_rt:
                     display = candle_dt.strftime('%Y/%m/%d %H:%M')
                 else:
-                    display = '— (غير مكتملة)'
+                    display = '- (غير مكتملة)'
         except Exception:
             display = raw[:16]
     _status_cols[i].markdown(
