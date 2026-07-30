@@ -12,6 +12,14 @@ import time
 
 CANDLE_TRACKER_PATH = "data/last_candle.json"
 
+
+def _get_tickers_needing_full_data(conn, interval, min_candles=200):
+    sufficient = set(pd.read_sql_query(
+        f"SELECT ticker FROM ohlcv_{interval} GROUP BY ticker HAVING COUNT(*) >= {min_candles}", conn
+    )['ticker'].tolist())
+    return [t for t in SAUDI_TICKERS if t not in sufficient]
+
+
 def _read_candle_tracker():
     if os.path.exists(CANDLE_TRACKER_PATH):
         with open(CANDLE_TRACKER_PATH) as f:
@@ -215,11 +223,16 @@ def calculate_and_save_indicators(interval):
     
     all_data = {1: [], 2: [], 3: [], 4: [], 5: []}
     max_dt = None
+    processed = 0
+    skipped_no_data = 0
+    skipped_insufficient = 0
 
+    print(f"  Processing {len(SAUDI_TICKERS)} tickers for {interval} indicators...")
     for ticker in SAUDI_TICKERS:
         df = pd.read_sql_query(
             f"SELECT * FROM {ohlcv_table} WHERE ticker = '{ticker}' ORDER BY datetime ASC", conn)
         if df.empty:
+            skipped_no_data += 1
             continue
         ticker_max = df['datetime'].max()
         if pd.notna(ticker_max):
@@ -230,12 +243,16 @@ def calculate_and_save_indicators(interval):
         except Exception:
             continue
         if not results:
+            skipped_insufficient += 1
             continue
         t1, t2, t3, t4, t5 = results
         for t in [t1, t2, t3, t4, t5]:
             t['الاسم'] = COMPANY_NAMES.get(ticker, ticker)
         all_data[1].append(t1); all_data[2].append(t2); all_data[3].append(t3)
         all_data[4].append(t4); all_data[5].append(t5)
+        processed += 1
+    
+    print(f"  ✓ {processed} tickers processed ({skipped_no_data} no data, {skipped_insufficient} insufficient candles)")
     
     conn.execute(f"DELETE FROM {ind_table}")
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -330,42 +347,98 @@ def smart_update_all():
     results = {}
     updated_intervals = []
 
+    print("=" * 50)
+    print(f"Smart Update — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 50)
+
+    # ---------- 1h ----------
     ok, reason = can_fetch_1h()
     if ok:
+        need_full = _get_tickers_needing_full_data(conn, '1h')
+        if need_full:
+            print(f"\n[1h] {len(need_full)} tickers need full history (< 200 candles)")
+            print(f"[1h] Downloading 1y history for {len(need_full)} tickers...")
+            df_full = batch_download('1h', '1y', tickers=need_full)
+            if not df_full.empty:
+                got = len(df_full)
+                _append_new_candles(conn, 'ohlcv_1h', df_full)
+                print(f"[1h] Got {got} candles from full-history download")
+            conn.commit()
+
+        print(f"[1h] Downloading 5d incremental data...")
         df_new = batch_download('1h', '5d')
         if not df_new.empty:
+            prev = conn.execute("SELECT COUNT(*) FROM ohlcv_1h").fetchone()[0]
             _append_new_candles(conn, 'ohlcv_1h', df_new)
+            total = conn.execute("SELECT COUNT(*) FROM ohlcv_1h").fetchone()[0]
+            added = total - prev
+            print(f"[1h] Added {added} new candles (total: {total})")
             results['1h'] = 'تم التحديث ✓'
-            updated_intervals.append('1h')
+            if added > 0:
+                updated_intervals.append('1h')
         else:
+            print(f"[1h] No new data from yfinance")
             results['1h'] = 'لا توجد بيانات جديدة'
         conn.commit()
     else:
+        print(f"[1h] Skipped: {reason}")
         results['1h'] = reason
 
-    ok_h = 'تم التحديث' in results.get('1h', '')
-    if ok_h or _should_resample_4h(conn):
+    # ---------- 4h ----------
+    if _should_resample_4h(conn):
+        print(f"\n[4h] Resampling from 1h...")
         _resample_1h_to_4h(conn)
         conn.commit()
         results['4h'] = 'تم التحديث ✓'
         updated_intervals.append('4h')
+        print(f"[4h] Resample complete")
+    else:
+        results['4h'] = '—'
 
+    # ---------- 1d ----------
     ok, reason = can_fetch_1d()
     if ok:
+        need_full = _get_tickers_needing_full_data(conn, '1d')
+        if need_full:
+            print(f"\n[1d] {len(need_full)} tickers need full history (< 200 candles)")
+            print(f"[1d] Downloading 2y history for {len(need_full)} tickers...")
+            df_full = batch_download('1d', '2y', tickers=need_full)
+            if not df_full.empty:
+                got = len(df_full)
+                _append_new_candles(conn, 'ohlcv_1d', df_full)
+                print(f"[1d] Got {got} candles from full-history download")
+            conn.commit()
+
+        print(f"[1d] Downloading 5d incremental data...")
         df_new = batch_download('1d', '5d')
         if not df_new.empty:
+            prev = conn.execute("SELECT COUNT(*) FROM ohlcv_1d").fetchone()[0]
             _append_new_candles(conn, 'ohlcv_1d', df_new)
+            total = conn.execute("SELECT COUNT(*) FROM ohlcv_1d").fetchone()[0]
+            added = total - prev
+            print(f"[1d] Added {added} new candles (total: {total})")
             results['1d'] = 'تم التحديث ✓'
-            updated_intervals.append('1d')
+            if added > 0:
+                updated_intervals.append('1d')
         else:
+            print(f"[1d] No new data from yfinance")
             results['1d'] = 'لا توجد بيانات جديدة'
         conn.commit()
     else:
+        print(f"[1d] Skipped: {reason}")
         results['1d'] = reason
 
     conn.close()
 
     for interval in updated_intervals:
+        print(f"\n[{interval}] Calculating indicators...")
         calculate_and_save_indicators(interval)
 
+    need_still = _get_tickers_needing_full_data(get_conn(), '1h') if updated_intervals else []
+    conn.close()
+    if need_still:
+        print(f"\n⚠️ {len(need_still)} tickers still below 200 candles after update")
+    print("\n" + "=" * 50)
+    print("Update complete!")
+    print("=" * 50)
     return results
